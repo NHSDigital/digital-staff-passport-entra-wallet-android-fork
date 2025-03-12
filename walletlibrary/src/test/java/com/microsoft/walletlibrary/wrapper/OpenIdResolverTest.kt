@@ -1,11 +1,11 @@
 package com.microsoft.walletlibrary.wrapper
 
-import com.microsoft.did.sdk.PresentationService
-import com.microsoft.did.sdk.VerifiableCredentialSdk
-import com.microsoft.did.sdk.credential.service.PresentationRequest
-import com.microsoft.did.sdk.credential.service.models.oidc.PresentationRequestContent
-import com.microsoft.did.sdk.util.controlflow.Result
-import com.microsoft.did.sdk.util.controlflow.SdkException
+import com.microsoft.walletlibrary.did.sdk.PresentationService
+import com.microsoft.walletlibrary.did.sdk.VerifiableCredentialSdk
+import com.microsoft.walletlibrary.did.sdk.credential.service.PresentationRequest
+import com.microsoft.walletlibrary.did.sdk.credential.service.models.oidc.PresentationRequestContent
+import com.microsoft.walletlibrary.did.sdk.util.controlflow.Result
+import com.microsoft.walletlibrary.did.sdk.util.controlflow.SdkException
 import com.microsoft.walletlibrary.requests.rawrequests.RequestType
 import com.microsoft.walletlibrary.requests.rawrequests.VerifiedIdOpenIdJwtRawRequest
 import com.microsoft.walletlibrary.util.VerifiedIdRequestFetchException
@@ -32,24 +32,55 @@ class OpenIdResolverTest {
         mockkStatic(VerifiableCredentialSdk::class)
         every { VerifiableCredentialSdk.presentationService } returns mockPresentationService
         if (!isFailure) {
-            coEvery { mockPresentationService.getRequest(openIdUrl) } returns Result.Success(mockPresentationRequest)
+            coEvery { mockPresentationService.getRequest(openIdUrl, any()) } returns Result.Success(mockPresentationRequest)
+            coEvery { mockPresentationService.validateRequest(mockPresentationRequestContent) } returns Result.Success(mockPresentationRequest)
             every { mockPresentationRequest.content } returns mockPresentationRequestContent
             every { mockPresentationRequestContent.prompt } returns ""
-        } else
-            coEvery { mockPresentationService.getRequest(openIdUrl) } returns Result.Failure(SdkException())
+        } else {
+            coEvery { mockPresentationService.getRequest(openIdUrl, any()) } returns Result.Failure(
+                SdkException()
+            )
+            coEvery { mockPresentationService.validateRequest(mockPresentationRequestContent) } returns Result.Failure(SdkException())
+        }
     }
 
     @Test
     fun resolveOpenIdRequest_SuccessfulPresentationRequestFromSdk_ReturnsRawRequestOfTypePresentation() {
         runBlocking {
             // Act
-            val actualResult = OpenIdResolver.getRequest(openIdUrl)
+            val actualResult = OpenIdResolver.getRequest(openIdUrl, emptyList())
 
             // Assert
             assertThat(actualResult).isInstanceOf(VerifiedIdOpenIdJwtRawRequest::class.java)
             assertThat(actualResult.requestType).isEqualTo(RequestType.PRESENTATION)
-            assertThat(actualResult.rawRequest).isEqualTo(mockPresentationRequest)
+            assertThat(actualResult.presentationRequest).isEqualTo(mockPresentationRequest)
         }
+    }
+
+    @Test
+    fun resolveOpenIdRequest_ValidateRequestSuccessful_ReturnsRawRequestOfTypePresentation() {
+        runBlocking {
+            // Act
+            val actualResult = OpenIdResolver.validateRequest(mockPresentationRequestContent, emptyMap())
+
+            // Assert
+            assertThat(actualResult).isInstanceOf(VerifiedIdOpenIdJwtRawRequest::class.java)
+            assertThat(actualResult.requestType).isEqualTo(RequestType.PRESENTATION)
+            assertThat(actualResult.presentationRequest).isEqualTo(mockPresentationRequest)
+        }
+    }
+
+    @Test
+    fun resolveOpenIdRequest_ValidateRequestFailure_ThrowsException() {
+        // Arrange
+        setupInput(true)
+
+        // Act and Assert
+        Assertions.assertThatThrownBy {
+            runBlocking {
+                OpenIdResolver.validateRequest(mockPresentationRequestContent, emptyMap())
+            }
+        }.isInstanceOf(VerifiedIdRequestFetchException::class.java)
     }
 
     @Test
@@ -60,7 +91,7 @@ class OpenIdResolverTest {
         // Act and Assert
         Assertions.assertThatThrownBy {
             runBlocking {
-                OpenIdResolver.getRequest(openIdUrl)
+                OpenIdResolver.getRequest(openIdUrl, emptyList())
             }
         }.isInstanceOf(VerifiedIdRequestFetchException::class.java)
     }

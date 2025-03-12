@@ -5,17 +5,16 @@
 
 package com.microsoft.walletlibrary.wrapper
 
-import com.microsoft.did.sdk.VerifiableCredentialSdk
-import com.microsoft.did.sdk.credential.service.IssuanceRequest
-import com.microsoft.did.sdk.credential.service.IssuanceResponse
-import com.microsoft.did.sdk.credential.service.models.issuancecallback.IssuanceCompletionResponse
-import com.microsoft.did.sdk.util.controlflow.NetworkException
-import com.microsoft.did.sdk.util.controlflow.Result
+import com.microsoft.walletlibrary.did.sdk.VerifiableCredentialSdk
+import com.microsoft.walletlibrary.did.sdk.credential.service.IssuanceRequest
+import com.microsoft.walletlibrary.did.sdk.credential.service.IssuanceResponse
+import com.microsoft.walletlibrary.did.sdk.credential.service.models.issuancecallback.IssuanceCompletionResponse
+import com.microsoft.walletlibrary.did.sdk.util.controlflow.Result
+import com.microsoft.walletlibrary.did.sdk.util.log.SdkLog
 import com.microsoft.walletlibrary.mappings.issuance.addRequirements
 import com.microsoft.walletlibrary.requests.requirements.Requirement
+import com.microsoft.walletlibrary.util.LibraryConfiguration
 import com.microsoft.walletlibrary.util.VerifiedIdResponseCompletionException
-import com.microsoft.walletlibrary.util.WalletLibraryException
-import com.microsoft.walletlibrary.util.WalletLibraryLogger
 import com.microsoft.walletlibrary.verifiedid.VerifiableCredential
 import com.microsoft.walletlibrary.verifiedid.VerifiedId
 
@@ -27,63 +26,28 @@ object VerifiedIdRequester {
     internal suspend fun sendIssuanceResponse(
         issuanceRequest: IssuanceRequest,
         requirement: Requirement,
-        requestState: String? = null,
-        issuanceCallbackUrl: String? = null
+        libraryConfiguration: LibraryConfiguration
     ): VerifiedId {
         val issuanceResponse = IssuanceResponse(issuanceRequest)
         issuanceResponse.addRequirements(requirement)
-        when (val result = VerifiableCredentialSdk.issuanceService.sendResponse(issuanceResponse)) {
-            is Result.Success -> {
-                try {
-                    val issuanceCompletionResponse = requestState?.let {
-                        IssuanceCompletionResponse(
-                            IssuanceCompletionResponse.IssuanceCompletionCode.ISSUANCE_SUCCESSFUL,
-                            it,
-                            null
-                        )
-                    }
-                    sendIssuanceCallback(issuanceCompletionResponse, issuanceCallbackUrl)
-                } catch (exception: WalletLibraryException) {
-                    WalletLibraryLogger.e(
-                        "Unable to send issuance callback after issuance completes",
-                        exception
-                    )
-                }
-                return VerifiableCredential(result.payload, issuanceRequest.contract)
-            }
+        when (val result = VerifiableCredentialSdk.issuanceService.sendResponse(issuanceResponse, libraryConfiguration)) {
+            is Result.Success -> return VerifiableCredential(result.payload, issuanceRequest.contract)
             is Result.Failure -> {
-                val details = when (result.payload) {
-                    is NetworkException -> IssuanceCompletionResponse.IssuanceCompletionErrorDetails.ISSUANCE_SERVICE_ERROR
-                    else -> IssuanceCompletionResponse.IssuanceCompletionErrorDetails.UNSPECIFIED_ERROR
-                }
-                try {
-                    val issuanceCompletionResponse = requestState?.let {
-                        IssuanceCompletionResponse(
-                            IssuanceCompletionResponse.IssuanceCompletionCode.ISSUANCE_FAILED,
-                            it,
-                            details
-                        )
-                    }
-                    sendIssuanceCallback(issuanceCompletionResponse, issuanceCallbackUrl)
-                } catch (exception: WalletLibraryException) {
-                    WalletLibraryLogger.e(
-                        "Unable to send issuance callback after issuance fails",
-                        exception
-                    )
-                }
                 throw VerifiedIdResponseCompletionException(
                     "Unable to complete issuance response",
-                    result.payload
+                    result.payload.cause
                 )
             }
         }
     }
 
     internal suspend fun sendIssuanceCallback(
-        issuanceCompletionResponse: IssuanceCompletionResponse?,
+        issuanceCompletionResponse: IssuanceCompletionResponse,
         issuanceCallbackUrl: String?
     ) {
-        if (issuanceCompletionResponse != null && issuanceCallbackUrl != null) {
+        if (issuanceCallbackUrl == null) {
+            SdkLog.w("Issuance callback endpoint is not defined.")
+        } else {
             VerifiedIdCompletionCallBack.sendIssuanceCompletionResponse(
                 issuanceCompletionResponse,
                 issuanceCallbackUrl

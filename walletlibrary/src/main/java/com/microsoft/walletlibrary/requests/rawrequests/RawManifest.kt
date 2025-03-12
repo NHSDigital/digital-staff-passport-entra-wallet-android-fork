@@ -5,7 +5,7 @@
 
 package com.microsoft.walletlibrary.requests.rawrequests
 
-import com.microsoft.did.sdk.credential.service.IssuanceRequest
+import com.microsoft.walletlibrary.did.sdk.credential.service.IssuanceRequest
 import com.microsoft.walletlibrary.mappings.issuance.getRequesterStyle
 import com.microsoft.walletlibrary.mappings.issuance.toRequirement
 import com.microsoft.walletlibrary.mappings.issuance.toVerifiedIdStyle
@@ -16,9 +16,9 @@ import com.microsoft.walletlibrary.requests.IssuanceRequestContent
  * Represents the raw issuance request from VC SDK.
  */
 internal class RawManifest(
-    override val rawRequest: IssuanceRequest,
+    val rawRequest: IssuanceRequest,
     override val requestType: RequestType = RequestType.ISSUANCE
-): RawRequest {
+) : RawRequest {
     internal fun mapToIssuanceRequestContent(): IssuanceRequestContent {
         return IssuanceRequestContent(
             rawRequest.getRequesterStyle(),

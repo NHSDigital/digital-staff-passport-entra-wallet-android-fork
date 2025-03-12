@@ -5,13 +5,11 @@
 
 package com.microsoft.walletlibrary.wrapper
 
-import com.microsoft.did.sdk.VerifiableCredentialSdk
-import com.microsoft.did.sdk.credential.service.models.issuancecallback.IssuanceCompletionResponse
-import com.microsoft.did.sdk.util.controlflow.Result
+import com.microsoft.walletlibrary.did.sdk.VerifiableCredentialSdk
+import com.microsoft.walletlibrary.did.sdk.credential.service.models.issuancecallback.IssuanceCompletionResponse
+import com.microsoft.walletlibrary.did.sdk.util.controlflow.Result
 import com.microsoft.walletlibrary.requests.rawrequests.RawManifest
 import com.microsoft.walletlibrary.util.VerifiedIdRequestFetchException
-import com.microsoft.walletlibrary.util.WalletLibraryException
-import com.microsoft.walletlibrary.util.WalletLibraryLogger
 
 /**
  * Wrapper class to wrap the get Issuance Request from VC SDK and return a raw request.
@@ -31,25 +29,16 @@ internal object ManifestResolver {
                 RawManifest(request)
             }
             is Result.Failure -> {
-                val issuanceCompletionResponse = requestState?.let {
-                    IssuanceCompletionResponse(
+                requestState?.let {
+                    val issuanceCompletionResponse = IssuanceCompletionResponse(
                         IssuanceCompletionResponse.IssuanceCompletionCode.ISSUANCE_FAILED,
                         it,
-                        IssuanceCompletionResponse.IssuanceCompletionErrorDetails.FETCH_CONTRACT_ERROR,
+                        IssuanceCompletionResponse.IssuanceCompletionErrorDetails.FETCH_CONTRACT_ERROR
                     )
+
+                    VerifiedIdRequester.sendIssuanceCallback(issuanceCompletionResponse, issuanceCallbackUrl)
                 }
-                try {
-                    if (issuanceCompletionResponse != null && issuanceCallbackUrl != null)
-                        VerifiedIdCompletionCallBack.sendIssuanceCompletionResponse(
-                            issuanceCompletionResponse,
-                            issuanceCallbackUrl
-                        )
-                } catch (exception: WalletLibraryException) {
-                    WalletLibraryLogger.e(
-                        "Unable to send issuance callback after fetching request",
-                        exception
-                    )
-                }
+
                 throw VerifiedIdRequestFetchException(
                     "Unable to fetch issuance request",
                     issuanceRequestResult.payload

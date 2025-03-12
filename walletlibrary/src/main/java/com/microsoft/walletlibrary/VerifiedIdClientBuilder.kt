@@ -7,19 +7,37 @@ package com.microsoft.walletlibrary
 
 import android.content.Context
 import android.content.pm.PackageManager
-import com.microsoft.did.sdk.VerifiableCredentialSdk
-import com.microsoft.walletlibrary.requests.RequestHandlerFactory
+import com.microsoft.walletlibrary.datasource.repository.HolderIdentifierDataRepository
+import com.microsoft.walletlibrary.did.sdk.VerifiableCredentialSdk
+import com.microsoft.walletlibrary.did.sdk.datasource.network.apis.HttpAgentApiProvider
+import com.microsoft.walletlibrary.did.sdk.identifier.resolvers.RootOfTrustResolver
+import com.microsoft.walletlibrary.did.sdk.util.HttpAgentUtils
+import com.microsoft.walletlibrary.did.sdk.util.controlflow.Result
+import com.microsoft.walletlibrary.did.sdk.util.log.SdkLog
+import com.microsoft.walletlibrary.identifier.HolderIdentifier
+import com.microsoft.walletlibrary.identifier.IdentifierFactory
+import com.microsoft.walletlibrary.mappings.identifier.toHolderIdentifier
+import com.microsoft.walletlibrary.requests.RequestProcessorFactory
 import com.microsoft.walletlibrary.requests.RequestResolverFactory
-import com.microsoft.walletlibrary.requests.handlers.OpenIdRequestHandler
-import com.microsoft.walletlibrary.requests.handlers.RequestHandler
+import com.microsoft.walletlibrary.requests.VerifiedIdExtension
+import com.microsoft.walletlibrary.requests.handlers.OpenId4VCIRequestHandler
+import com.microsoft.walletlibrary.requests.handlers.OpenIdRequestProcessor
+import com.microsoft.walletlibrary.requests.handlers.RequestProcessor
+import com.microsoft.walletlibrary.requests.requestProcessorExtensions.RequestProcessorExtension
 import com.microsoft.walletlibrary.requests.resolvers.OpenIdURLRequestResolver
 import com.microsoft.walletlibrary.requests.resolvers.RequestResolver
 import com.microsoft.walletlibrary.requests.styles.BasicVerifiedIdStyle
 import com.microsoft.walletlibrary.requests.styles.VerifiedIdStyle
+import com.microsoft.walletlibrary.util.LibraryConfiguration
+import com.microsoft.walletlibrary.util.PreviewFeatureFlags
 import com.microsoft.walletlibrary.util.WalletLibraryLogger
 import com.microsoft.walletlibrary.util.WalletLibraryVCSDKLogConsumer
+import com.microsoft.walletlibrary.util.http.httpagent.IHttpAgent
+import com.microsoft.walletlibrary.util.http.httpagent.OkHttpAgent
+import com.microsoft.walletlibrary.verifiedid.OpenId4VciVerifiedId
 import com.microsoft.walletlibrary.verifiedid.VerifiableCredential
 import com.microsoft.walletlibrary.verifiedid.VerifiedId
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.modules.SerializersModule
 import kotlinx.serialization.modules.polymorphic
@@ -31,12 +49,18 @@ import kotlinx.serialization.modules.subclass
 class VerifiedIdClientBuilder(private val context: Context) {
 
     private var logger: WalletLibraryLogger = WalletLibraryLogger
+    private var httpAgent: IHttpAgent = OkHttpAgent()
+    private var userAgent: String? = null
     private val requestResolvers = mutableListOf<RequestResolver>()
-    private val requestHandlers = mutableListOf<RequestHandler>()
+    private val requestProcessors = mutableListOf<RequestProcessor<*>>()
+    private val previewFeatureFlagsSupported = mutableListOf<String>()
+    private var preferHeaders = mutableListOf<String>()
+    private val extensionBuilders = mutableListOf<VerifiedIdExtension>()
     private val jsonSerializer = Json {
         serializersModule = SerializersModule {
             polymorphic(VerifiedId::class) {
                 subclass(VerifiableCredential::class)
+                subclass(OpenId4VciVerifiedId::class)
             }
             polymorphic(VerifiedIdStyle::class) {
                 subclass(BasicVerifiedIdStyle::class)
@@ -45,39 +69,119 @@ class VerifiedIdClientBuilder(private val context: Context) {
         ignoreUnknownKeys = true
         isLenient = true
     }
+    private var rootOfTrustResolver: RootOfTrustResolver? = null
+    private val identifiers = ArrayList<HolderIdentifier>()
 
     // An optional custom log consumer can be passed to be used by VerifiedIdClient.
     fun with(logConsumer: WalletLibraryLogger.Consumer) {
         logger.addConsumer(logConsumer)
     }
 
+    fun with(rootOfTrustResolver: RootOfTrustResolver): VerifiedIdClientBuilder {
+        this.rootOfTrustResolver = rootOfTrustResolver
+        return this
+    }
+
+    fun with(extension: VerifiedIdExtension): VerifiedIdClientBuilder {
+        preferHeaders.addAll(extension.prefer)
+        extensionBuilders.add(extension)
+        return this
+    }
+
+    fun with(httpAgent: IHttpAgent): VerifiedIdClientBuilder {
+        this.httpAgent = httpAgent
+        return this
+    }
+
+    fun with(userAgent: String): VerifiedIdClientBuilder {
+        this.userAgent = userAgent
+        return this
+    }
+
+    // An optional method to provide a list of preview features to be supported by the client.
+    fun with(previewFeatureFlagsToSupport: List<String>): VerifiedIdClientBuilder {
+        previewFeatureFlagsSupported.addAll(previewFeatureFlagsToSupport)
+        return this
+    }
+
+    fun with(identifier: HolderIdentifier): VerifiedIdClientBuilder {
+        identifiers.add(identifier)
+        return this
+    }
+
     // Configures and returns VerifiedIdClient with the configurations provided in builder class.
     fun build(): VerifiedIdClient {
-        val requestResolverFactory = RequestResolverFactory()
-        registerRequestResolver(OpenIdURLRequestResolver())
-        requestResolverFactory.requestResolvers.addAll(requestResolvers)
-
-        val requestHandlerFactory = RequestHandlerFactory()
-        registerRequestHandler(OpenIdRequestHandler())
-        requestHandlerFactory.requestHandlers.addAll(requestHandlers)
-
         val vcSdkLogConsumer = WalletLibraryVCSDKLogConsumer(logger)
+        val userAgentInfo = getUserAgent(context)
+        val walletLibraryVersionInfo = getWalletLibraryVersionInfo()
         VerifiableCredentialSdk.init(
             context,
             logConsumer = vcSdkLogConsumer,
-            userAgentInfo = getUserAgent(context),
-            walletLibraryVersionInfo = getWalletLibraryVersionInfo()
+            userAgentInfo = userAgentInfo,
+            walletLibraryVersionInfo = walletLibraryVersionInfo,
+            httpAgent = httpAgent,
+            rootOfTrustResolver = rootOfTrustResolver
         )
+
+        val apiProvider = HttpAgentApiProvider(
+            this.httpAgent,
+            HttpAgentUtils(
+                userAgentInfo,
+                walletLibraryVersionInfo,
+                VerifiableCredentialSdk.correlationVectorService
+            ),
+            jsonSerializer
+        )
+        val previewFeatureFlags = PreviewFeatureFlags(previewFeatureFlagsSupported)
+        val identifierFactory = IdentifierFactory()
+        val libraryConfiguration =
+            LibraryConfiguration(
+                previewFeatureFlags,
+                apiProvider,
+                jsonSerializer,
+                rootOfTrustResolver,
+                logger,
+                identifierFactory
+            )
+        runBlocking {
+            fetchAllHolderIdentifiers(libraryConfiguration)
+        }
+        identifierFactory.identifiers.addAll(identifiers)
+
+        val requestResolverFactory = RequestResolverFactory()
+        registerRequestResolver(OpenIdURLRequestResolver(libraryConfiguration, preferHeaders))
+        requestResolverFactory.requestResolvers.addAll(requestResolvers)
+
+        val config = ExtensionConfiguration(libraryConfiguration)
+        val extensions: List<RequestProcessorExtension<*>> = extensionBuilders.mapNotNull {
+            it.createRequestProcessorExtensions(config)
+        }.flatten()
+
+        val requestProcessorFactory = RequestProcessorFactory()
+        registerRequestHandler(OpenIdRequestProcessor(libraryConfiguration), extensions)
+        registerRequestHandler(OpenId4VCIRequestHandler(libraryConfiguration), extensions)
+        requestProcessorFactory.requestProcessors.addAll(requestProcessors)
+
         return VerifiedIdClient(
             requestResolverFactory,
-            requestHandlerFactory,
+            requestProcessorFactory,
             logger,
             jsonSerializer
         )
     }
 
-    private fun registerRequestHandler(requestHandler: RequestHandler) {
-        requestHandlers.add(requestHandler)
+    private inline fun <reified T> registerRequestHandler(
+        requestProcessor: RequestProcessor<T>,
+        extensions: List<RequestProcessorExtension<*>>
+    ) {
+        for (extension in extensions) {
+            if (extension.associatedRequestProcessor.isInstance(requestProcessor)) {
+                // associatedType has the same <T> parameter for this cast
+                @Suppress("UNCHECKED_CAST")
+                requestProcessor.requestProcessors.add(extension as RequestProcessorExtension<T>)
+            }
+        }
+        requestProcessors.add(requestProcessor)
     }
 
     private fun registerRequestResolver(requestResolver: RequestResolver) {
@@ -91,13 +195,47 @@ class VerifiedIdClientBuilder(private val context: Context) {
     private fun getUserAgent(applicationContext: Context): String {
         return try {
             val packageManager = applicationContext.packageManager
-            val applicationInfo = packageManager.getApplicationInfo(applicationContext.packageName, 0)
+            val applicationInfo =
+                packageManager.getApplicationInfo(applicationContext.packageName, 0)
             val appName = packageManager.getApplicationLabel(applicationInfo).toString()
             val packageInfo = packageManager.getPackageInfo(applicationContext.packageName, 0)
-            appName + "/" + packageInfo.versionName
+            (userAgent ?: appName) + "/" + packageInfo.versionName
         } catch (e: PackageManager.NameNotFoundException) {
             WalletLibraryLogger.e("Error getting version name.", e)
             ""
+        }
+    }
+
+    private suspend fun getDefaultIdentifier(): HolderIdentifier? {
+        val identifier =
+            when (val defaultIdentifier =
+                VerifiableCredentialSdk.identifierService.getMasterIdentifier()) {
+                is Result.Success -> {
+                    defaultIdentifier.payload.toHolderIdentifier(
+                        VerifiableCredentialSdk.identifierService.getKeyStore()
+                    )
+                }
+
+                is Result.Failure -> {
+                    SdkLog.e("Unable to fetch master identifier")
+                    null
+                }
+            }
+        return identifier
+    }
+
+    private suspend fun getMainHolderIdentifier(): HolderIdentifier {
+        val holderIdentifierDataRepository = HolderIdentifierDataRepository()
+        return holderIdentifierDataRepository.getMainHolderIdentifier()
+    }
+
+    private suspend fun fetchAllHolderIdentifiers(libraryConfiguration: LibraryConfiguration) {
+        if (libraryConfiguration.isPreviewFeatureEnabled(PreviewFeatureFlags.FEATURE_FLAG_FIPS_COMPLIANT_IDENTIFIER)) {
+            identifiers.add(getMainHolderIdentifier())
+        } else {
+            val defaultHolderIdentifier = getDefaultIdentifier()
+            defaultHolderIdentifier?.let { identifiers.add(it) }
+                ?: SdkLog.e("Unable to fetch default holder identifier")
         }
     }
 }

@@ -1,11 +1,11 @@
 package com.microsoft.walletlibrary.verifiedid
 
-import com.microsoft.did.sdk.credential.models.VerifiableCredentialContent
-import com.microsoft.did.sdk.credential.models.VerifiableCredentialDescriptor
-import com.microsoft.did.sdk.credential.service.models.contracts.VerifiableCredentialContract
-import com.microsoft.did.sdk.credential.service.models.contracts.display.CardDescriptor
-import com.microsoft.did.sdk.credential.service.models.contracts.display.ClaimDescriptor
-import com.microsoft.did.sdk.credential.service.models.contracts.display.DisplayContract
+import com.microsoft.walletlibrary.did.sdk.credential.models.VerifiableCredentialContent
+import com.microsoft.walletlibrary.did.sdk.credential.models.VerifiableCredentialDescriptor
+import com.microsoft.walletlibrary.did.sdk.credential.service.models.contracts.VerifiableCredentialContract
+import com.microsoft.walletlibrary.did.sdk.credential.service.models.contracts.display.CardDescriptor
+import com.microsoft.walletlibrary.did.sdk.credential.service.models.contracts.display.ClaimDescriptor
+import com.microsoft.walletlibrary.did.sdk.credential.service.models.contracts.display.DisplayContract
 import io.mockk.every
 import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
@@ -13,7 +13,7 @@ import org.junit.Test
 import java.util.*
 
 class VerifiableCredentialTest {
-    private val verifiableCredentialFromSdk: com.microsoft.did.sdk.credential.models.VerifiableCredential =
+    private val verifiableCredentialFromSdk: com.microsoft.walletlibrary.did.sdk.credential.models.VerifiableCredential =
         mockk()
     private val verifiableCredentialContract: VerifiableCredentialContract = mockk()
     private val mockVcContent: VerifiableCredentialContent = mockk()
@@ -32,8 +32,8 @@ class VerifiableCredentialTest {
     private val expectedClaim2Value = "test"
     private val expectedDisplayNameForClaim1 = "vc.credentialSubject.name"
     private val expectedDisplayNameForClaim2 = "vc.credentialSubject.company"
-    private val expectedClaimLabelForClaim1 = "Test Name"
-    private val expectedClaimLabelForClaim2 = "Test Company"
+    private val expectedClaimLabelForClaim1 = "name"
+    private val expectedClaimLabelForClaim2 = "company"
 
     @Test
     fun getClaims_EmptyDisplayContract_ReturnsClaimLabelsFromVc() {

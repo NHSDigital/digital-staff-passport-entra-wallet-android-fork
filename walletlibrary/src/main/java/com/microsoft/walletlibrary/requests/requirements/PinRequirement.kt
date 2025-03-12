@@ -5,7 +5,11 @@
 
 package com.microsoft.walletlibrary.requests.requirements
 
-import com.microsoft.walletlibrary.util.PinRequirementNotFulfilledException
+import com.microsoft.walletlibrary.requests.handlers.RequestProcessorSerializer
+import com.microsoft.walletlibrary.util.RequirementNotMetException
+import com.microsoft.walletlibrary.util.VerifiedIdExceptions
+import com.microsoft.walletlibrary.util.VerifiedIdResult
+import com.microsoft.walletlibrary.verifiedid.VerifiedIdSerializer
 
 /**
  * Represents information that describes pin required in order to complete a VerifiedID request.
@@ -20,19 +24,27 @@ class PinRequirement(
     // Indicates if pin is required or optional.
     override val required: Boolean = false,
 
-    internal val salt: String? = null,
+    val salt: String? = null,
 
     internal var pin: String? = null
 ): Requirement {
     // Validates the requirement and throws an exception if the requirement is invalid or not fulfilled.
-    override fun validate(): Result<Unit> {
+    override fun validate(): VerifiedIdResult<Unit> {
         if (pin == null)
-            return Result.failure(PinRequirementNotFulfilledException("PinRequirement has not been fulfilled."))
-        return Result.success(Unit)
+            return RequirementNotMetException("Pin has not been set.", VerifiedIdExceptions.REQUIREMENT_NOT_MET_EXCEPTION.value).toVerifiedIdResult()
+        return VerifiedIdResult.success(Unit)
     }
 
     // Fulfills the requirement in the request with specified value.
     fun fulfill(pinValue: String) {
         pin = pinValue
+    }
+
+    @Throws
+    override suspend fun <T> serialize(
+        protocolSerializer: RequestProcessorSerializer<T>,
+        verifiedIdSerializer: VerifiedIdSerializer<T>
+    ): T? {
+        return null
     }
 }

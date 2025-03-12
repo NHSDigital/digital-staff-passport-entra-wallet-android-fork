@@ -7,6 +7,8 @@ import com.microsoft.walletlibrary.requests.requirements.IdTokenRequirement
 import com.microsoft.walletlibrary.requests.requirements.SelfAttestedClaimRequirement
 import com.microsoft.walletlibrary.requests.styles.RequesterStyle
 import com.microsoft.walletlibrary.requests.styles.VerifiedIdStyle
+import com.microsoft.walletlibrary.util.LibraryConfiguration
+import com.microsoft.walletlibrary.util.UnspecifiedVerifiedIdException
 import com.microsoft.walletlibrary.util.VerifiedIdResponseCompletionException
 import com.microsoft.walletlibrary.verifiedid.VerifiedId
 import com.microsoft.walletlibrary.wrapper.VerifiedIdRequester
@@ -22,6 +24,7 @@ class ManifestIssuanceRequestTest {
     private val rootOfTrust: RootOfTrust = mockk()
     private val verifiedIdStyle: VerifiedIdStyle = mockk()
     private val rawManifest: RawManifest = mockk()
+    private val mockLibraryConfiguration: LibraryConfiguration = mockk()
 
     @Test
     fun isSatisfied_SelfAttestedRequirementFulfilled_ReturnsTrue() {
@@ -37,7 +40,8 @@ class ManifestIssuanceRequestTest {
             selfAttestedClaimRequirement,
             rootOfTrust,
             verifiedIdStyle,
-            rawManifest
+            rawManifest,
+            libraryConfiguration = mockLibraryConfiguration
         )
         selfAttestedClaimRequirement.fulfill("test")
 
@@ -62,7 +66,8 @@ class ManifestIssuanceRequestTest {
             selfAttestedClaimRequirement,
             rootOfTrust,
             verifiedIdStyle,
-            rawManifest
+            rawManifest,
+            libraryConfiguration = mockLibraryConfiguration
         )
 
         // Act
@@ -125,14 +130,16 @@ class ManifestIssuanceRequestTest {
             selfAttestedClaimRequirement,
             rootOfTrust,
             verifiedIdStyle,
-            rawManifest
+            rawManifest,
+            libraryConfiguration = mockLibraryConfiguration
         )
         val mockVerifiedId: VerifiedId = mockk()
         mockkObject(VerifiedIdRequester)
         coEvery {
             VerifiedIdRequester.sendIssuanceResponse(
                 manifestIssuanceRequest.request.rawRequest,
-                manifestIssuanceRequest.requirement
+                manifestIssuanceRequest.requirement,
+                mockLibraryConfiguration
             )
         } returns mockVerifiedId
         runBlocking {
@@ -159,13 +166,15 @@ class ManifestIssuanceRequestTest {
             selfAttestedClaimRequirement,
             rootOfTrust,
             verifiedIdStyle,
-            rawManifest
+            rawManifest,
+            libraryConfiguration = mockLibraryConfiguration
         )
         mockkObject(VerifiedIdRequester)
         coEvery {
             VerifiedIdRequester.sendIssuanceResponse(
                 manifestIssuanceRequest.request.rawRequest,
-                manifestIssuanceRequest.requirement
+                manifestIssuanceRequest.requirement,
+                mockLibraryConfiguration
             )
         }.throws(VerifiedIdResponseCompletionException())
         runBlocking {
@@ -175,7 +184,7 @@ class ManifestIssuanceRequestTest {
             // Assert
             assertThat(actualResult.isFailure).isTrue
             assertThat(actualResult.exceptionOrNull()).isInstanceOf(
-                VerifiedIdResponseCompletionException::class.java
+                UnspecifiedVerifiedIdException::class.java
             )
         }
     }
@@ -209,7 +218,8 @@ class ManifestIssuanceRequestTest {
             groupRequirement,
             rootOfTrust,
             verifiedIdStyle,
-            rawManifest
+            rawManifest,
+            libraryConfiguration = mockLibraryConfiguration
         )
         if (fulfillSelfAttested)
             selfAttestedClaimRequirement.fulfill("Test")

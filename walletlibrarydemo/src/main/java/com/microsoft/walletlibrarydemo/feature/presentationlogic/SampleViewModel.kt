@@ -4,21 +4,36 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
+import com.microsoft.walletlibrary.VerifiedIdClient
 import com.microsoft.walletlibrary.VerifiedIdClientBuilder
 import com.microsoft.walletlibrary.requests.VerifiedIdRequest
 import com.microsoft.walletlibrary.requests.input.VerifiedIdRequestURL
 import com.microsoft.walletlibrary.requests.requirements.VerifiedIdRequirement
+import com.microsoft.walletlibrary.util.PreviewFeatureFlags
 import com.microsoft.walletlibrary.verifiedid.VerifiedId
 import com.microsoft.walletlibrarydemo.db.VerifiedIdDatabase
 import com.microsoft.walletlibrarydemo.db.entities.EncodedVerifiedId
+import com.microsoft.walletlibrarydemo.extension.ExampleExtension
 
 class SampleViewModel(@SuppressLint("StaticFieldLeak") val context: Context) : ViewModel() {
     var verifiedIdRequest: VerifiedIdRequest<*>? = null
     var verifiedId: VerifiedId? = null
+    private var verifiedIdClient: VerifiedIdClient
+    private val verifiedIdDao = VerifiedIdDatabase.getInstance(context).verifiedIdDao()
 
     // VerifiedIdClientBuilder configures and returns a VerifiedIdClient.
-    private val verifiedIdClient = VerifiedIdClientBuilder(context).build()
-    private val verifiedIdDao = VerifiedIdDatabase.getInstance(context).verifiedIdDao()
+    init {
+        val builder = VerifiedIdClientBuilder(context)
+        .with(listOf(
+            PreviewFeatureFlags.FEATURE_FLAG_PROCESSOR_EXTENSION_SUPPORT,
+            PreviewFeatureFlags.FEATURE_FLAG_PRESENTATION_EXCHANGE_SERIALIZATION_SUPPORT,
+            PreviewFeatureFlags.FEATURE_FLAG_OPENID4VCI_ACCESS_TOKEN,
+            PreviewFeatureFlags.FEATURE_FLAG_OPENID4VCI_PRE_AUTH,
+            PreviewFeatureFlags.FEATURE_FLAG_FIPS_COMPLIANT_IDENTIFIER
+        ))
+        .with(ExampleExtension())
+        verifiedIdClient = builder.build()
+    }
 
     enum class State(var value: String? = null) {
         INITIALIZED,
@@ -41,21 +56,21 @@ class SampleViewModel(@SuppressLint("StaticFieldLeak") val context: Context) : V
                 verifiedIdRequest = it
             },
             onFailure = {
-                populateErrorState(it.message)
+                populateErrorState(it.cause?.message ?: it.message)
             })
     }
 
     suspend fun completeIssuance() {
-        verifiedIdRequest?.let {
+        verifiedIdRequest?.let { request ->
             // Completes an issuance request
-            val issuanceResult = it.complete()
+            val issuanceResult = request.complete()
             issuanceResult.fold(
                 onSuccess = { issuedVerifiedId ->
                     state = State.ISSUANCE_SUCCESS
                     verifiedId = issuedVerifiedId as VerifiedId
-                    verifiedId?.let { it -> encodeVerifiedId(it) }
+                    verifiedId?.let { encodeVerifiedId(it) }
                 },
-                onFailure = { exception -> populateErrorState(exception.cause?.message ?: exception.message) })
+                onFailure = { exception -> populateErrorState(exception.cause?.message ?: exception.message) } )
         }
     }
 
@@ -69,7 +84,7 @@ class SampleViewModel(@SuppressLint("StaticFieldLeak") val context: Context) : V
                     verifiedIdDao.insert(vc)
                 }
             },
-            onFailure = { populateErrorState(it.message) }
+            onFailure = { populateErrorState(it.cause?.message ?: it.message) }
         )
     }
 
@@ -83,7 +98,7 @@ class SampleViewModel(@SuppressLint("StaticFieldLeak") val context: Context) : V
                 onSuccess = {
                     it.let { decodedVerifiedId -> decodedVerifiedIds.add(decodedVerifiedId) }
                 },
-                onFailure = { populateErrorState(it.message) }
+                onFailure = { populateErrorState(it.cause?.message ?: it.message) }
             )
         }
         return decodedVerifiedIds

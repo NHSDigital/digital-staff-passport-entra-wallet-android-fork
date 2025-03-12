@@ -1,17 +1,17 @@
 package com.microsoft.walletlibrary.requests.rawrequests
 
-import com.microsoft.did.sdk.credential.service.PresentationRequest
-import com.microsoft.did.sdk.credential.service.models.linkedDomains.LinkedDomainVerified
-import com.microsoft.did.sdk.credential.service.models.oidc.PresentationRequestContent
-import com.microsoft.did.sdk.credential.service.models.oidc.Registration
-import com.microsoft.did.sdk.credential.service.models.presentationexchange.CredentialPresentationInputDescriptor
-import com.microsoft.did.sdk.credential.service.models.presentationexchange.PresentationDefinition
-import com.microsoft.did.sdk.credential.service.models.presentationexchange.Schema
+import com.microsoft.walletlibrary.did.sdk.credential.service.PresentationRequest
+import com.microsoft.walletlibrary.did.sdk.credential.service.models.linkedDomains.LinkedDomainVerified
+import com.microsoft.walletlibrary.did.sdk.credential.service.models.oidc.PresentationRequestContent
+import com.microsoft.walletlibrary.did.sdk.credential.service.models.oidc.Registration
+import com.microsoft.walletlibrary.did.sdk.credential.service.models.presentationexchange.CredentialPresentationInputDescriptor
+import com.microsoft.walletlibrary.did.sdk.credential.service.models.presentationexchange.PresentationDefinition
+import com.microsoft.walletlibrary.did.sdk.credential.service.models.presentationexchange.Schema
 import com.microsoft.walletlibrary.requests.requirements.VerifiedIdRequirement
 import com.microsoft.walletlibrary.requests.styles.OpenIdVerifierStyle
+import com.microsoft.walletlibrary.util.MalformedInputException
 import com.microsoft.walletlibrary.util.MissingCallbackUrlException
 import com.microsoft.walletlibrary.util.MissingRequestStateException
-import com.microsoft.walletlibrary.util.MissingVerifiedIdTypeException
 import io.mockk.every
 import io.mockk.mockk
 import org.assertj.core.api.Assertions
@@ -47,7 +47,7 @@ class VerifiedIdOpenIdJwtRawRequestTest {
         isSchemaEmpty: Boolean
     ) {
         every { mockPresentationRequest.content } returns mockPresentationRequestContent
-        every { mockPresentationRequest.getPresentationDefinition() } returns mockPresentationDefinition
+        every { mockPresentationRequest.getPresentationDefinitions() } returns listOf(mockPresentationDefinition)
         every { mockPresentationRequest.entityName } returns expectedEntityName
         every { mockPresentationRequest.linkedDomainResult } returns LinkedDomainVerified(
             expectedLinkedDomainSource
@@ -57,7 +57,7 @@ class VerifiedIdOpenIdJwtRawRequestTest {
         setupLogo(logoPresent)
         every { mockPresentationRequest.content.prompt } returns expectedPromptForIssuance
         verifiedIdOpenIdJwtRawRequest =
-            VerifiedIdOpenIdJwtRawRequest(mockPresentationRequest)
+            VerifiedIdOpenIdJwtRawRequest(mockPresentationRequest, rawRequest = emptyMap())
     }
 
     private fun setupPresentationContent() {
@@ -69,11 +69,15 @@ class VerifiedIdOpenIdJwtRawRequestTest {
         inputDescriptors: List<CredentialPresentationInputDescriptor>,
         isSchemaEmpty: Boolean
     ) {
-        every { mockPresentationRequest.getPresentationDefinition().credentialPresentationInputDescriptors } returns inputDescriptors
+        every { mockPresentationRequest.getPresentationDefinitions() } returns
+                listOf(mockk {
+                    every { credentialPresentationInputDescriptors } returns inputDescriptors
+                })
         for (inputDescriptor in inputDescriptors) {
             every { inputDescriptor.id } returns expectedInputDescriptorId
             every { inputDescriptor.purpose } returns expectedPurpose
             every { inputDescriptor.issuanceMetadataList } returns emptyList()
+            every { inputDescriptor.constraints } returns null
             setupSchema(inputDescriptor, isSchemaEmpty)
         }
     }
@@ -150,7 +154,7 @@ class VerifiedIdOpenIdJwtRawRequestTest {
         // Act and Assert
         Assertions.assertThatThrownBy {
             verifiedIdOpenIdJwtRawRequest.mapToPresentationRequestContent()
-        }.isInstanceOf(MissingVerifiedIdTypeException::class.java)
+        }.isInstanceOf(MalformedInputException::class.java)
     }
 
     @Test

@@ -6,10 +6,9 @@
 package com.microsoft.walletlibrary.mappings.issuance
 
 import android.net.Uri
-import com.microsoft.did.sdk.credential.service.models.attestations.PresentationAttestation
+import com.microsoft.walletlibrary.did.sdk.credential.service.models.attestations.PresentationAttestation
 import com.microsoft.walletlibrary.requests.input.VerifiedIdRequestURL
 import com.microsoft.walletlibrary.requests.requirements.VerifiedIdRequirement
-import com.microsoft.walletlibrary.requests.requirements.constraints.VcTypeConstraint
 
 /**
  * Maps PresentationAttestation object from VC SDK to VerifiedIdRequirement in library
@@ -17,11 +16,10 @@ import com.microsoft.walletlibrary.requests.requirements.constraints.VcTypeConst
 internal fun PresentationAttestation.toVerifiedIdRequirement(): VerifiedIdRequirement {
     return VerifiedIdRequirement(
         null,
-        listOf(this.credentialType),
-        VcTypeConstraint(credentialType),
-        this.encrypted,
-        this.required,
+        listOf(credentialType),
+        encrypted,
+        required,
         "",
-        issuanceOptions = this.contracts.map { VerifiedIdRequestURL(Uri.parse(it)) }
+        issuanceOptions = contracts.map { VerifiedIdRequestURL(Uri.parse(it)) }
     )
 }

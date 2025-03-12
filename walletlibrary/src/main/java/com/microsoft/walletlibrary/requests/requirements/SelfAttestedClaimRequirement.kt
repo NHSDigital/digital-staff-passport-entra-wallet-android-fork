@@ -5,7 +5,11 @@
 
 package com.microsoft.walletlibrary.requests.requirements
 
-import com.microsoft.walletlibrary.util.SelfAttestedClaimRequirementNotFulfilledException
+import com.microsoft.walletlibrary.requests.handlers.RequestProcessorSerializer
+import com.microsoft.walletlibrary.util.RequirementNotMetException
+import com.microsoft.walletlibrary.util.VerifiedIdExceptions
+import com.microsoft.walletlibrary.util.VerifiedIdResult
+import com.microsoft.walletlibrary.verifiedid.VerifiedIdSerializer
 
 /**
  * Represents information that describes self-attested claims required in order to complete a VerifiedID request.
@@ -23,17 +27,28 @@ class SelfAttestedClaimRequirement(
     override val required: Boolean = false,
 
     internal var value: String? = null
-): Requirement {
+) : Requirement {
     // Validates the requirement and throws an exception if the requirement is invalid or not fulfilled.
-    override fun validate(): Result<Unit> {
+    override fun validate(): VerifiedIdResult<Unit> {
         //TODO("should required field be checked?")
         if (value == null)
-            return Result.failure(SelfAttestedClaimRequirementNotFulfilledException("SelfAttestedClaimRequirement has not been fulfilled."))
-        return Result.success(Unit)
+            return RequirementNotMetException(
+                "Self Attested Claim has not been set.",
+                VerifiedIdExceptions.REQUIREMENT_NOT_MET_EXCEPTION.value
+            ).toVerifiedIdResult()
+        return VerifiedIdResult.success(Unit)
     }
 
     // Fulfills the requirement in the request with specified value.
     fun fulfill(selfAttestedClaimValue: String) {
         value = selfAttestedClaimValue
+    }
+
+    @Throws
+    override suspend fun <T> serialize(
+        protocolSerializer: RequestProcessorSerializer<T>,
+        verifiedIdSerializer: VerifiedIdSerializer<T>
+    ): T? {
+        return null
     }
 }

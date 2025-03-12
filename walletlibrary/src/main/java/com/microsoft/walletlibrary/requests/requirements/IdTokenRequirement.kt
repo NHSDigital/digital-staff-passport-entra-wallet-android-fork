@@ -5,7 +5,11 @@
 
 package com.microsoft.walletlibrary.requests.requirements
 
-import com.microsoft.walletlibrary.util.IdTokenRequirementNotFulfilledException
+import com.microsoft.walletlibrary.requests.handlers.RequestProcessorSerializer
+import com.microsoft.walletlibrary.util.RequirementNotMetException
+import com.microsoft.walletlibrary.util.VerifiedIdExceptions
+import com.microsoft.walletlibrary.util.VerifiedIdResult
+import com.microsoft.walletlibrary.verifiedid.VerifiedIdSerializer
 
 /**
  * Represents information that describes Id Token required in order to complete a VerifiedID request.
@@ -20,7 +24,7 @@ class IdTokenRequirement(
     val scope: String,
 
     // Nonce is generated using user DID.
-    val nonce: String,
+    private var _nonce: String,
 
     // Specific claims requested from id token.
     internal val claims: List<RequestedClaim>,
@@ -32,17 +36,36 @@ class IdTokenRequirement(
     override val required: Boolean = false,
 
     internal var idToken: String? = null
-): Requirement {
+) : Requirement {
+
+    // Readonly Verified ID that is currently fulfilling the requirement (if any)
+    val nonce: String
+        get() = this._nonce
+
+    internal fun setNonce(nonce: String) {
+        this._nonce = nonce
+    }
 
     // Validates the requirement and throws an exception if the requirement is invalid or not fulfilled.
-    override fun validate(): Result<Unit> {
+    override fun validate(): VerifiedIdResult<Unit> {
         if (idToken == null)
-            return Result.failure(IdTokenRequirementNotFulfilledException("IdTokenRequirement has not been fulfilled."))
-        return Result.success(Unit)
+            return RequirementNotMetException(
+                "Id Token has not been set.",
+                VerifiedIdExceptions.REQUIREMENT_NOT_MET_EXCEPTION.value
+            ).toVerifiedIdResult()
+        return VerifiedIdResult.success(Unit)
     }
 
     // Fulfills the requirement in the request with specified value.
     fun fulfill(idTokenValue: String) {
         idToken = idTokenValue
+    }
+
+    @Throws
+    override suspend fun <T> serialize(
+        protocolSerializer: RequestProcessorSerializer<T>,
+        verifiedIdSerializer: VerifiedIdSerializer<T>
+    ): T? {
+        return null
     }
 }

@@ -1,18 +1,27 @@
 package com.microsoft.walletlibrary.mappings.issuance
 
-import com.microsoft.did.sdk.credential.service.IssuanceRequest
-import com.microsoft.did.sdk.credential.service.IssuanceResponse
-import com.microsoft.did.sdk.credential.service.models.contracts.InputContract
-import com.microsoft.did.sdk.credential.service.models.contracts.VerifiableCredentialContract
-import com.microsoft.walletlibrary.requests.requirements.*
-import com.microsoft.walletlibrary.util.IdTokenRequirementNotFulfilledException
-import com.microsoft.walletlibrary.util.PinRequirementNotFulfilledException
-import com.microsoft.walletlibrary.util.SelfAttestedClaimRequirementNotFulfilledException
+import com.microsoft.walletlibrary.did.sdk.credential.service.IssuanceRequest
+import com.microsoft.walletlibrary.did.sdk.credential.service.IssuanceResponse
+import com.microsoft.walletlibrary.did.sdk.credential.service.models.attestations.PresentationAttestation
+import com.microsoft.walletlibrary.did.sdk.credential.service.models.contracts.InputContract
+import com.microsoft.walletlibrary.did.sdk.credential.service.models.contracts.VerifiableCredentialContract
+import com.microsoft.walletlibrary.requests.requirements.AccessTokenRequirement
+import com.microsoft.walletlibrary.requests.requirements.GroupRequirement
+import com.microsoft.walletlibrary.requests.requirements.GroupRequirementOperator
+import com.microsoft.walletlibrary.requests.requirements.IdTokenRequirement
+import com.microsoft.walletlibrary.requests.requirements.PinRequirement
+import com.microsoft.walletlibrary.requests.requirements.RequestedClaim
+import com.microsoft.walletlibrary.requests.requirements.SelfAttestedClaimRequirement
+import com.microsoft.walletlibrary.requests.requirements.VerifiedIdRequirement
+import com.microsoft.walletlibrary.requests.requirements.constraints.VcTypeConstraint
+import com.microsoft.walletlibrary.util.RequirementNotMetException
+import com.microsoft.walletlibrary.verifiedid.VerifiableCredential
 import io.mockk.every
 import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.Test
+import kotlin.test.assertTrue
 
 class IssuanceResponseMappingTest {
     private val mockIssuanceRequest: IssuanceRequest = mockk()
@@ -100,9 +109,10 @@ class IssuanceResponseMappingTest {
         )
 
         // Act and Assert
-        assertThatThrownBy{
+        assertThatThrownBy {
             issuanceResponse.addRequirements(selfAttestedClaimRequirement)
-        }.isInstanceOf(SelfAttestedClaimRequirementNotFulfilledException::class.java)
+        }.isInstanceOf(RequirementNotMetException::class.java)
+            .hasMessage("Self Attested Claim has not been set.")
     }
 
     @Test
@@ -134,9 +144,10 @@ class IssuanceResponseMappingTest {
             )
 
         // Act and Assert
-        assertThatThrownBy{
+        assertThatThrownBy {
             issuanceResponse.addRequirements(idTokenRequirement)
-        }.isInstanceOf(IdTokenRequirementNotFulfilledException::class.java)
+        }.isInstanceOf(RequirementNotMetException::class.java)
+            .hasMessage("Id Token has not been set.")
     }
 
     @Test
@@ -188,9 +199,9 @@ class IssuanceResponseMappingTest {
         val pinRequirement = PinRequirement(4, "numeric", true, expectedPinSalt)
 
         // Act and Assert
-        assertThatThrownBy{
+        assertThatThrownBy {
             issuanceResponse.addRequirements(pinRequirement)
-        }.isInstanceOf(PinRequirementNotFulfilledException::class.java)
+        }.isInstanceOf(RequirementNotMetException::class.java)
     }
 
     @Test
@@ -207,5 +218,47 @@ class IssuanceResponseMappingTest {
         assertThat(issuanceResponse.requestedAccessTokenMap[expectedConfiguration]).isEqualTo(
             expectedAccessTokenValue
         )
+    }
+
+    @Test
+    fun addRequirementToResponse_AddVerifiedIdRequirement_AddsRequirementToIssuanceResponse() {
+        // Arrange
+        val expectedCredentialType = "TestVc"
+        val verifiedIdRequirement = VerifiedIdRequirement(
+            "TestId",
+            listOf(expectedCredentialType)
+        )
+        val mockVerifiableCredential: VerifiableCredential = mockk()
+        every { mockVerifiableCredential.raw } returns mockk()
+        every { mockVerifiableCredential.types } returns listOf(expectedCredentialType)
+        verifiedIdRequirement._verifiedId = mockVerifiableCredential
+        val mockPresentationAttestation: PresentationAttestation = mockk()
+        every { mockIssuanceRequest.getAttestations().presentations } returns listOf(mockPresentationAttestation)
+        every { mockPresentationAttestation.credentialType } returns expectedCredentialType
+
+        // Act
+        issuanceResponse.addRequirements(verifiedIdRequirement)
+
+        // Assert
+        assertTrue(verifiedIdRequirement.constraint is VcTypeConstraint)
+        assertThat((verifiedIdRequirement.constraint as VcTypeConstraint).vcType).isEqualTo(expectedCredentialType)
+        assertThat(issuanceResponse.requestedVcMap.size).isEqualTo(1)
+    }
+
+    @Test
+    fun addRequirementToResponse_VerifiedIdRequirementNotFulfilled_ThrowsException() {
+        // Arrange
+        val expectedCredentialType = "TestVc"
+        val verifiedIdRequirement = VerifiedIdRequirement(
+            "TestId",
+            listOf(expectedCredentialType)
+        )
+
+        // Act and Assert
+        assertTrue(verifiedIdRequirement.constraint is VcTypeConstraint)
+        assertThat((verifiedIdRequirement.constraint as VcTypeConstraint).vcType).isEqualTo(expectedCredentialType)
+        assertThatThrownBy {
+            issuanceResponse.addRequirements(verifiedIdRequirement)
+        }.isInstanceOf(RequirementNotMetException::class.java)
     }
 }

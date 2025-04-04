@@ -1,1 +1,4 @@
-jdk: 17
+jdk:
+  - openjdk9
+before_install:
+   - echo "Running a custom install command in the jitpack-file"

@@ -1,5 +1,2 @@
 jdk:
   - openjdk17
-before_install:
-   - echo "Running a custom install command in the jitpack-file"
-   - echo java --version

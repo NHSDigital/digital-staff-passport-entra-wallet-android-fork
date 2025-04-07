@@ -134,43 +134,15 @@ dependencies {
 }
 
 project.afterEvaluate {
-    publishing {
-        repositories {
-            maven {
-                name = "local"
-                url rootProject.buildDir.path + '/artifacts'
-            }
-        }
-        tasks.withType(PublishToMavenRepository) {
-            onlyIf {
-                (repository == publishing.repositories.local)
-            }
-        }
+        publishing {
         publications {
-            walletlibrary(MavenPublication) {
-                from components.release
-                groupId = 'com.microsoft.entra.verifiedid'
+            release(MavenPublication) {
+                groupId = 'io.jitpack'
                 artifactId = 'walletlibrary'
-                version = _version
-                pom {
-                    name = 'walletlibrary'
-                    description = 'Entra VerifiedID WalletLibrary Android'
-                    url = 'https://github.com/microsoft/entra-verifiedid-wallet-library-android'
-                    licenses {
-                        license {
-                            name = 'MIT License'
-                            url = 'https://github.com/microsoft/entra-verifiedid-wallet-library-android/blob/dev/LICENSE'
-                        }
-                    }
-                    developers {
-                        developer {
-                            id = 'microsoft'
-                            name = 'Microsoft'
-                        }
-                    }
-                    scm {
-                        url = 'https://github.com/microsoft/entra-verifiedid-wallet-library-android/tree/dev'
-                    }
+                version = '1.0.5'
+
+                afterEvaluate {
+                    from components.release
                 }
             }
         }

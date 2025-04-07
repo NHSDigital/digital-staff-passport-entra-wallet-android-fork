@@ -15,8 +15,10 @@ import com.microsoft.walletlibrary.util.UserCanceledException
 import com.microsoft.walletlibrary.util.VerifiedIdExceptions
 import com.microsoft.walletlibrary.util.VerifiedIdResult
 import com.microsoft.walletlibrary.util.getResult
+import com.microsoft.walletlibrary.util.http.URLFormEncoding
 import com.microsoft.walletlibrary.verifiedid.StringVerifiedIdSerializer
 import com.microsoft.walletlibrary.wrapper.OpenIdResponder
+import org.json.JSONObject
 
 /**
  * Presentation request specific to OpenId protocol.
@@ -36,6 +38,9 @@ internal class OpenIdPresentationRequest(
     private val libraryConfiguration: LibraryConfiguration
 ) : VerifiedIdPresentationRequest, HttpProtocolRequest {
     private var additionalHeaders = emptyMap<String, String>()
+    private var requestId = "";
+
+    override var id = "";
 
     // Indicates whether presentation request is satisfied on client side.
     override fun isSatisfied(): Boolean {
@@ -47,6 +52,10 @@ internal class OpenIdPresentationRequest(
     // Sets additional headers to include in the response
     override fun setAdditionalHeaders(headers: Map<String, String>) {
         additionalHeaders = headers
+    }
+
+    fun setRequestId(requestId: String) {
+        this.requestId = requestId
     }
 
     // Completes the presentation request and returns Result with success status if successful.
@@ -88,6 +97,24 @@ internal class OpenIdPresentationRequest(
                 OpenIdResponder.sendPresentationResponse(request.presentationRequest, requirement, additionalHeaders, libraryConfiguration)
             }
         }
+    }
+
+    override suspend fun generateTokens(): VerifiedIdPresentationRequest.Tokens {
+        val builder = PresentationExchangeResponseBuilder(libraryConfiguration)
+        builder.serialize(requirement, StringVerifiedIdSerializer)
+        val idToken = builder.buildIdToken(
+            request.presentationRequest.getPresentationDefinitions().first().id,
+            request.presentationRequest.content.clientId,
+            request.presentationRequest.content.nonce,
+        )
+        val vpTokens = builder.buildVpTokens(
+            request.presentationRequest.content.clientId,
+            request.presentationRequest.content.nonce)
+
+        return VerifiedIdPresentationRequest.Tokens(
+            request.presentationRequest.content.redirectUrl, idToken, vpTokens.first(),
+            request.presentationRequest.content.state
+        );
     }
 
     override suspend fun cancel(message: String?): VerifiedIdResult<Unit> {
